@@ -1,4 +1,4 @@
-.PHONY: cpp-build cpp-test cpp-bench py-install py-test lint verify bench bench-update clean
+.PHONY: cpp-build cpp-test cpp-bench py-install py-test lint verify bench bench-attn bench-update clean
 
 cpp-build:
 	cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -11,7 +11,7 @@ cpp-bench: cpp-build
 	./build/tinyinfer_bench
 
 py-install:
-	pip install -e ".[dev]"
+	pip install --no-build-isolation -e ".[dev]" || pip install -e ".[dev]"
 
 py-test:
 	pytest -v
@@ -23,6 +23,9 @@ verify: cpp-test lint py-test
 
 bench:
 	python3 benchmarks/bench_kernels.py
+
+bench-attn:
+	python3 benchmarks/bench_attention.py
 
 bench-update:
 	python3 benchmarks/bench_kernels.py --update-readme README.md

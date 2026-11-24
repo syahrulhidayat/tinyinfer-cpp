@@ -2,8 +2,11 @@
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/string.h>
 
+#include <algorithm>
 #include <stdexcept>
 
+#include "tinyinfer/attention.hpp"
+#include "tinyinfer/kv_cache.hpp"
 #include "tinyinfer/matmul.hpp"
 #include "tinyinfer/ops.hpp"
 #include "tinyinfer/quant.hpp"
@@ -32,7 +35,7 @@ nb::ndarray<nb::numpy, float, nb::ndim<1>> make_vec1d(std::size_t n) {
 }  // namespace
 
 NB_MODULE(_core, m) {
-    m.doc() = "tinyinfer C++20 quantized tensor kernels";
+    m.doc() = "tinyinfer C++20 quantized tensor kernels and GQA attention";
 
     nb::class_<tinyinfer::BuildInfo>(m, "BuildInfo")
         .def_ro("avx2_fma", &tinyinfer::BuildInfo::avx2_fma)
@@ -46,6 +49,23 @@ NB_MODULE(_core, m) {
         .def_ro("blocks_per_row", &tinyinfer::Q8Matrix::blocks_per_row)
         .def("memory_bytes", &tinyinfer::Q8Matrix::memory_bytes)
         .def("compression_ratio", &tinyinfer::Q8Matrix::compression_ratio);
+
+    nb::class_<tinyinfer::KVCache>(m, "KVCache")
+        .def(
+            nb::init<std::size_t, std::size_t, std::size_t, std::size_t>(),
+            nb::arg("n_layers"),
+            nb::arg("max_seq_len"),
+            nb::arg("n_kv_heads"),
+            nb::arg("head_dim")
+        )
+        .def_prop_ro("n_layers", &tinyinfer::KVCache::n_layers)
+        .def_prop_ro("max_seq_len", &tinyinfer::KVCache::max_seq_len)
+        .def_prop_ro("n_kv_heads", &tinyinfer::KVCache::n_kv_heads)
+        .def_prop_ro("head_dim", &tinyinfer::KVCache::head_dim)
+        .def_prop_ro("kv_dim", &tinyinfer::KVCache::kv_dim)
+        .def("seq_len", &tinyinfer::KVCache::seq_len, nb::arg("layer") = 0)
+        .def("memory_bytes", &tinyinfer::KVCache::memory_bytes)
+        .def("reset", &tinyinfer::KVCache::reset);
 
     m.def("get_build_info", &tinyinfer::get_build_info);
 
@@ -118,5 +138,75 @@ NB_MODULE(_core, m) {
         nb::arg("head_dim"),
         nb::arg("pos"),
         nb::arg("theta_base") = 10000.0f
+    );
+
+    m.def(
+        "gqa_decode_step",
+        [](
+            const ConstF32Vec& q,
+            const ConstF32Vec& k_new,
+            const ConstF32Vec& v_new,
+            tinyinfer::KVCache& cache,
+            std::size_t layer,
+            std::size_t pos,
+            std::size_t n_q_heads
+        ) {
+            const std::size_t expected_q = n_q_heads * cache.head_dim();
+            if (q.shape(0) != expected_q) {
+                throw std::invalid_argument("gqa_decode_step: q length != n_q_heads * head_dim.");
+            }
+            if (k_new.shape(0) != cache.kv_dim() || v_new.shape(0) != cache.kv_dim()) {
+                throw std::invalid_argument("gqa_decode_step: k_new/v_new length != kv_dim.");
+            }
+            auto out = make_vec1d(expected_q);
+            tinyinfer::gqa_decode_step(
+                q.data(), k_new.data(), v_new.data(), cache, layer, pos, n_q_heads, out.data()
+            );
+            return out;
+        },
+        nb::arg("q"),
+        nb::arg("k_new"),
+        nb::arg("v_new"),
+        nb::arg("cache"),
+        nb::arg("layer"),
+        nb::arg("pos"),
+        nb::arg("n_q_heads")
+    );
+
+    m.def(
+        "gqa_prefill",
+        [](
+            const ConstF32Mat& q,
+            const ConstF32Mat& k,
+            const ConstF32Mat& v,
+            tinyinfer::KVCache& cache,
+            std::size_t layer,
+            std::size_t start_pos,
+            std::size_t n_q_heads
+        ) {
+            const std::size_t seq_len = q.shape(0);
+            const std::size_t expected_q = n_q_heads * cache.head_dim();
+            if (k.shape(0) != seq_len || v.shape(0) != seq_len) {
+                throw std::invalid_argument("gqa_prefill: q, k, v must share seq_len.");
+            }
+            if (q.shape(1) != expected_q) {
+                throw std::invalid_argument("gqa_prefill: q width != n_q_heads * head_dim.");
+            }
+            if (k.shape(1) != cache.kv_dim() || v.shape(1) != cache.kv_dim()) {
+                throw std::invalid_argument("gqa_prefill: k/v width != kv_dim.");
+            }
+            auto out = make_mat2d(seq_len, expected_q);
+            tinyinfer::gqa_prefill(
+                q.data(), k.data(), v.data(), cache, layer, start_pos, seq_len, n_q_heads, out.data()
+            );
+            return out;
+        },
+        nb::arg("q"),
+        nb::arg("k"),
+        nb::arg("v"),
+        nb::arg("cache"),
+        nb::arg("layer"),
+        nb::arg("start_pos"),
+        nb::arg("n_q_heads")
     );
 }

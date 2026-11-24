@@ -3,39 +3,17 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 
-from tinyinfer._core import (
-    BuildInfo,
-    Q8Matrix,
-    dequantize_q8_0,
-    get_build_info,
-)
-from tinyinfer._core import (
-    matmul_fp32_nt as _matmul_fp32_nt,
-)
-from tinyinfer._core import (
-    matmul_q8_0_nt as _matmul_q8_0_nt,
-)
-from tinyinfer._core import (
-    quantize_q8_0 as _quantize_q8_0,
-)
-from tinyinfer._core import (
-    rmsnorm as _rmsnorm,
-)
-from tinyinfer._core import (
-    rope_inplace as _rope_inplace,
-)
-from tinyinfer._core import (
-    silu as _silu,
-)
-from tinyinfer._core import (
-    softmax as _softmax,
-)
+from tinyinfer import _core
+from tinyinfer._core import BuildInfo, KVCache, Q8Matrix, dequantize_q8_0, get_build_info
 
 __all__ = [
     "BuildInfo",
+    "KVCache",
     "Q8Matrix",
     "dequantize_q8_0",
     "get_build_info",
+    "gqa_decode_step",
+    "gqa_prefill",
     "matmul_fp32_nt",
     "matmul_q8_0_nt",
     "quantize_q8_0",
@@ -61,15 +39,15 @@ def _as_f32_1d(arr: NDArray[np.floating]) -> NDArray[np.float32]:
 
 
 def quantize_q8_0(weights: NDArray[np.floating]) -> Q8Matrix:
-    return _quantize_q8_0(_as_f32_2d(weights))
+    return _core.quantize_q8_0(_as_f32_2d(weights))
 
 
 def matmul_fp32_nt(x: NDArray[np.floating], w: NDArray[np.floating]) -> NDArray[np.float32]:
-    return _matmul_fp32_nt(_as_f32_2d(x), _as_f32_2d(w))
+    return _core.matmul_fp32_nt(_as_f32_2d(x), _as_f32_2d(w))
 
 
 def matmul_q8_0_nt(x: NDArray[np.floating], w_q8: Q8Matrix) -> NDArray[np.float32]:
-    return _matmul_q8_0_nt(_as_f32_2d(x), w_q8)
+    return _core.matmul_q8_0_nt(_as_f32_2d(x), w_q8)
 
 
 def rmsnorm(
@@ -77,15 +55,15 @@ def rmsnorm(
     weight: NDArray[np.floating],
     eps: float = 1e-5,
 ) -> NDArray[np.float32]:
-    return _rmsnorm(_as_f32_1d(x), _as_f32_1d(weight), eps)
+    return _core.rmsnorm(_as_f32_1d(x), _as_f32_1d(weight), eps)
 
 
 def softmax(x: NDArray[np.floating]) -> NDArray[np.float32]:
-    return _softmax(_as_f32_1d(x))
+    return _core.softmax(_as_f32_1d(x))
 
 
 def silu(x: NDArray[np.floating]) -> NDArray[np.float32]:
-    return _silu(_as_f32_1d(x))
+    return _core.silu(_as_f32_1d(x))
 
 
 def rope_inplace(
@@ -98,4 +76,46 @@ def rope_inplace(
 ) -> None:
     if x.dtype != np.float32 or not x.flags["C_CONTIGUOUS"]:
         raise ValueError("rope_inplace requires a C-contiguous float32 1D array.")
-    _rope_inplace(x, n_heads, head_dim, pos, theta_base)
+    _core.rope_inplace(x, n_heads, head_dim, pos, theta_base)
+
+
+def gqa_decode_step(
+    q: NDArray[np.floating],
+    k_new: NDArray[np.floating],
+    v_new: NDArray[np.floating],
+    cache: KVCache,
+    *,
+    layer: int,
+    pos: int,
+    n_q_heads: int,
+) -> NDArray[np.float32]:
+    return _core.gqa_decode_step(
+        _as_f32_1d(q),
+        _as_f32_1d(k_new),
+        _as_f32_1d(v_new),
+        cache,
+        layer,
+        pos,
+        n_q_heads,
+    )
+
+
+def gqa_prefill(
+    q: NDArray[np.floating],
+    k: NDArray[np.floating],
+    v: NDArray[np.floating],
+    cache: KVCache,
+    *,
+    layer: int,
+    start_pos: int = 0,
+    n_q_heads: int,
+) -> NDArray[np.float32]:
+    return _core.gqa_prefill(
+        _as_f32_2d(q),
+        _as_f32_2d(k),
+        _as_f32_2d(v),
+        cache,
+        layer,
+        start_pos,
+        n_q_heads,
+    )

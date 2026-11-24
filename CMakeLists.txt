@@ -15,6 +15,8 @@ add_library(tinyinfer_core STATIC
     src/quant.cc
     src/matmul.cc
     src/ops.cc
+    src/kv_cache.cc
+    src/attention.cc
 )
 set_target_properties(tinyinfer_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(tinyinfer_core PUBLIC
@@ -43,6 +45,13 @@ if(TINYINFER_BUILD_TESTS)
         target_compile_options(tinyinfer_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME cpp_kernel_tests COMMAND tinyinfer_tests)
+
+    add_executable(tinyinfer_attention_tests tests/cpp/test_attention.cc)
+    target_link_libraries(tinyinfer_attention_tests PRIVATE tinyinfer_core)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(tinyinfer_attention_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME cpp_attention_tests COMMAND tinyinfer_attention_tests)
 endif()
 
 if(TINYINFER_BUILD_BENCH)
