@@ -24,6 +24,7 @@ cmake.define.TINYINFER_BUILD_BENCH = "OFF"
 wheel.packages = ["python/tinyinfer"]
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["tests/python"]
 
 [tool.ruff]
@@ -34,4 +35,4 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["tinyinfer"]
+known-first-party = ["tinyinfer", "dashboard"]

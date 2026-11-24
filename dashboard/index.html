@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>tinyinfer-cpp Benchmark Dashboard</title>
+    <style>
+      :root {
+        font-family: Inter, system-ui, -apple-system, sans-serif;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 20px 48px; }
+      .header {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px; margin-bottom: 20px;
+      }
+      .header h1 { margin: 0; font-size: 1.4rem; letter-spacing: -0.02em; }
+      .sub { margin: 4px 0 0; color: #475569; font-size: 0.9rem; }
+      .btn {
+        background: #0284c7; color: #fff; border: none; border-radius: 6px;
+        padding: 9px 14px; font-weight: 600; cursor: pointer; font-size: 0.85rem;
+      }
+      .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+      .meta-grid {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px; margin-bottom: 18px;
+      }
+      .card {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;
+      }
+      .card h2 { margin: 0 0 10px; font-size: 0.95rem; color: #1e293b; }
+      .label { display: block; font-size: 0.75rem; color: #64748b; margin-bottom: 4px; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .charts {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 16px; margin-bottom: 18px;
+      }
+      canvas { width: 100%; height: 220px; display: block; }
+      table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+      th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #e2e8f0; }
+      th { color: #475569; font-weight: 600; font-size: 0.8rem; }
+      .error {
+        background: #fee2e2; color: #991b1b; padding: 10px 12px;
+        border-radius: 6px; margin-bottom: 16px; display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="header">
+        <div>
+          <h1>tinyinfer-cpp Benchmark Telemetry</h1>
+          <p class="sub" id="subtitle">Loading measured runtime telemetry...</p>
+        </div>
+        <button class="btn" id="rerunBtn" type="button">Re-run E2E Benchmark</button>
+      </header>
+
+      <div id="errorBox" class="error"></div>
+
+      <section class="meta-grid" id="metaGrid"></section>
+
+      <section class="charts">
+        <div class="card">
+          <h2>Decode Throughput (tokens/sec — higher is better)</h2>
+          <canvas id="chartTok" width="480" height="220"></canvas>
+        </div>
+        <div class="card">
+          <h2>Weight Memory Footprint (MB — lower is better)</h2>
+          <canvas id="chartMem" width="480" height="220"></canvas>
+        </div>
+        <div class="card">
+          <h2>Prompt Prefill Latency (ms — lower is better)</h2>
+          <canvas id="chartPrefill" width="480" height="220"></canvas>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Measured Parity &amp; Latency Comparison</h2>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Backend</th>
+                <th>Weights (MB)</th>
+                <th>Prefill (ms)</th>
+                <th>Decode (ms)</th>
+                <th>Decode (tok/s)</th>
+                <th>Cosine Sim</th>
+                <th>Max Abs Drift</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const COLORS = ["#64748b", "#0284c7", "#0f766e", "#b45309"];
+
+      function drawBarChart(canvasId, items, key, unit) {
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext("2d");
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const maxVal = Math.max(...items.map((r) => Number(r[key]) || 0), 1e-6);
+        const padLeft = 155;
+        const padRight = 72;
+        const padTop = 16;
+        const rowH = Math.min(46, Math.floor((h - padTop * 2) / Math.max(items.length, 1)));
+        const barWMax = w - padLeft - padRight;
+
+        items.forEach((item, idx) => {
+          const val = Number(item[key]) || 0;
+          const y = padTop + idx * rowH;
+          const barH = Math.max(16, rowH - 14);
+          const barW = Math.max(3, (val / maxVal) * barWMax);
+
+          ctx.fillStyle = "#334155";
+          ctx.font = "12px ui-monospace, monospace";
+          ctx.textAlign = "right";
+          ctx.textBaseline = "middle";
+          ctx.fillText(item.backend.slice(0, 21), padLeft - 10, y + barH / 2);
+
+          ctx.fillStyle = COLORS[idx % COLORS.length];
+          ctx.fillRect(padLeft, y, barW, barH);
+
+          ctx.fillStyle = "#0f172a";
+          ctx.textAlign = "left";
+          ctx.fillText(val.toFixed(2) + " " + unit, padLeft + barW + 8, y + barH / 2);
+        });
+      }
+
+      function render(report) {
+        const hw = report.hardware;
+        const cfg = report.model_config;
+        document.getElementById("subtitle").textContent =
+          hw.cpu + " (" + hw.threads + " threads) • Measured " + report.timestamp_utc;
+
+        document.getElementById("metaGrid").innerHTML = [
+          ["Model Architecture", cfg.n_layers + "L / dim=" + cfg.dim + " / " + cfg.n_q_heads + "Q:" + cfg.n_kv_heads + "KV"],
+          ["SIMD & Threading", "AVX2+FMA=" + (hw.avx2_fma ? "ON" : "OFF") + " | OpenMP=" + (hw.openmp ? "ON" : "OFF")],
+          ["CUDA Device", hw.cuda_device],
+          ["Process Peak RSS", hw.peak_rss_mb.toFixed(2) + " MB"]
+        ].map(([k, v]) => (
+          '<div class="card"><span class="label">' + k + '</span><strong class="mono">' + v + '</strong></div>'
+        )).join("");
+
+        drawBarChart("chartTok", report.results, "decode_tok_s", "tok/s");
+        drawBarChart("chartMem", report.results, "weight_mb", "MB");
+        drawBarChart("chartPrefill", report.results, "prefill_ms", "ms");
+
+        document.getElementById("tableBody").innerHTML = report.results.map((r) => (
+          "<tr>" +
+            "<td><strong>" + r.backend + "</strong></td>" +
+            '<td class="mono">' + r.weight_mb.toFixed(2) + "</td>" +
+            '<td class="mono">' + r.prefill_ms.toFixed(2) + "</td>" +
+            '<td class="mono">' + r.decode_ms.toFixed(2) + "</td>" +
+            '<td class="mono">' + r.decode_tok_s.toFixed(2) + "</td>" +
+            '<td class="mono">' + r.cosine_sim.toFixed(6) + "</td>" +
+            '<td class="mono">' + Number(r.max_abs_drift).toExponential(2) + "</td>" +
+          "</tr>"
+        )).join("");
+      }
+
+      async function loadResults() {
+        const errBox = document.getElementById("errorBox");
+        errBox.style.display = "none";
+        try {
+          const res = await fetch("/api/results");
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Failed to load telemetry.");
+          render(data);
+        } catch (err) {
+          errBox.textContent = err.message;
+          errBox.style.display = "block";
+        }
+      }
+
+      document.getElementById("rerunBtn").addEventListener("click", async () => {
+        const btn = document.getElementById("rerunBtn");
+        const errBox = document.getElementById("errorBox");
+        btn.disabled = true;
+        btn.textContent = "Running benchmark...";
+        errBox.style.display = "none";
+        try {
+          const res = await fetch("/api/rerun", { method: "POST" });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Benchmark failed.");
+          render(data);
+        } catch (err) {
+          errBox.textContent = err.message;
+          errBox.style.display = "block";
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Re-run E2E Benchmark";
+        }
+      });
+
+      void loadResults();
+    </script>
+  </body>
+</html>
