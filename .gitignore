@@ -1,0 +1,14 @@
+build/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+*.so
+*.dylib
+*.pyd
+inject*.py
+.DS_Store

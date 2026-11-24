@@ -1,0 +1,71 @@
+name: Sync Exact GitHub Structure to Google Drive
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+      - "docs/**"
+  workflow_dispatch:
+
+jobs:
+  sync_gdrive:
+    name: Mirror Repo (${{ github.ref_name }}) to Google Drive
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure rclone
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+        run: |
+          if ! command -v rclone >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq rclone
+          fi
+          mkdir -p ~/.config/rclone
+          python3 - << 'EOF'
+          import json
+          import os
+          import pathlib
+
+          token = json.dumps({
+              "access_token": "expired",
+              "token_type": "Bearer",
+              "refresh_token": os.environ["GDRIVE_REFRESH_TOKEN"].strip(),
+              "expiry": "2020-01-01T00:00:00Z",
+          })
+          conf = (
+              "[gdrive]\n"
+              "type = drive\n"
+              "scope = drive.file\n"
+              f"client_id = {os.environ['GDRIVE_CLIENT_ID'].strip()}\n"
+              f"client_secret = {os.environ['GDRIVE_CLIENT_SECRET'].strip()}\n"
+              f"token = {token}\n"
+          )
+          pathlib.Path.home().joinpath(".config/rclone/rclone.conf").write_text(conf)
+          EOF
+
+      - name: Mirror Exact GitHub Tree to Google Drive
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          rclone sync ./ "gdrive:tinyinfer_cpp_sync/${BRANCH}/" \
+            --exclude ".git/**" \
+            --exclude "build/**" \
+            --exclude ".venv/**" \
+            --exclude "venv/**" \
+            --exclude "__pycache__/**" \
+            --exclude "*.pyc" \
+            --exclude "*.egg-info/**" \
+            --exclude "*.so" \
+            --exclude "*.o" \
+            --exclude "*.a" \
+            --exclude ".pytest_cache/**" \
+            --exclude ".ruff_cache/**" \
+            --exclude "inject*.py" \
+            --verbose
