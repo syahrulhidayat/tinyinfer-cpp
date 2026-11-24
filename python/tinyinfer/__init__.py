@@ -4,23 +4,43 @@ import numpy as np
 from numpy.typing import NDArray
 
 from tinyinfer import _core
-from tinyinfer._core import BuildInfo, KVCache, Q8Matrix, dequantize_q8_0, get_build_info
+from tinyinfer._core import (
+    BuildInfo,
+    GenerationResult,
+    KVCache,
+    ModelConfig,
+    Q8Matrix,
+    TransformerModel,
+    WeightDType,
+    dequantize_q8_0,
+    get_build_info,
+    process_peak_rss_mb,
+    write_synthetic_tinf,
+)
+from tinyinfer.exporter import export_tinf
 
 __all__ = [
     "BuildInfo",
+    "GenerationResult",
     "KVCache",
+    "ModelConfig",
     "Q8Matrix",
+    "TransformerModel",
+    "WeightDType",
     "dequantize_q8_0",
+    "export_tinf",
     "get_build_info",
     "gqa_decode_step",
     "gqa_prefill",
     "matmul_fp32_nt",
     "matmul_q8_0_nt",
+    "process_peak_rss_mb",
     "quantize_q8_0",
     "rmsnorm",
     "rope_inplace",
     "silu",
     "softmax",
+    "write_synthetic_tinf",
 ]
 
 
