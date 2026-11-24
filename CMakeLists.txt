@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(TINYINFER_BUILD_TESTS "Build C++ unit tests" ON)
 option(TINYINFER_BUILD_BENCH "Build C++ microbenchmark binary" ON)
+option(TINYINFER_BUILD_CLI "Build standalone C++ inference CLI" ON)
 option(TINYINFER_BUILD_PYTHON "Build nanobind Python extension" OFF)
 option(TINYINFER_ENABLE_OPENMP "Enable OpenMP multithreading" ON)
 option(TINYINFER_ENABLE_AVX2 "Enable AVX2+FMA SIMD instructions on x86_64" ON)
@@ -17,6 +18,8 @@ add_library(tinyinfer_core STATIC
     src/ops.cc
     src/kv_cache.cc
     src/attention.cc
+    src/mmap_loader.cc
+    src/transformer.cc
 )
 set_target_properties(tinyinfer_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(tinyinfer_core PUBLIC
@@ -52,6 +55,13 @@ if(TINYINFER_BUILD_TESTS)
         target_compile_options(tinyinfer_attention_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME cpp_attention_tests COMMAND tinyinfer_attention_tests)
+
+    add_executable(tinyinfer_transformer_tests tests/cpp/test_transformer.cc)
+    target_link_libraries(tinyinfer_transformer_tests PRIVATE tinyinfer_core)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(tinyinfer_transformer_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME cpp_transformer_tests COMMAND tinyinfer_transformer_tests)
 endif()
 
 if(TINYINFER_BUILD_BENCH)
@@ -59,6 +69,14 @@ if(TINYINFER_BUILD_BENCH)
     target_link_libraries(tinyinfer_bench PRIVATE tinyinfer_core)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(tinyinfer_bench PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endif()
+
+if(TINYINFER_BUILD_CLI)
+    add_executable(tinyinfer_cli cli/main.cc)
+    target_link_libraries(tinyinfer_cli PRIVATE tinyinfer_core)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(tinyinfer_cli PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 endif()
 

@@ -1,4 +1,4 @@
-.PHONY: cpp-build cpp-test cpp-bench py-install py-test lint verify bench bench-attn bench-update clean
+.PHONY: cpp-build cpp-test cpp-bench cpp-cli py-install py-test lint verify bench bench-attn bench-update clean
 
 cpp-build:
 	cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -9,6 +9,9 @@ cpp-test: cpp-build
 
 cpp-bench: cpp-build
 	./build/tinyinfer_bench
+
+cpp-cli: cpp-build
+	./build/tinyinfer_cli --synthetic --dtype q8_0 --max-tokens 32
 
 py-install:
 	pip install --no-build-isolation -e ".[dev]" || pip install -e ".[dev]"

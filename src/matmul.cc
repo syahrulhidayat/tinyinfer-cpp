@@ -143,22 +143,24 @@ void matmul_fp32_nt(
     }
 }
 
-void matmul_q8_0_nt(
+void matmul_q8_0_nt_raw(
     const float* x,
-    const Q8Matrix& w_q8,
+    const int8_t* q_weights,
+    const float* q_scales,
     float* y,
-    std::size_t m
+    std::size_t m,
+    std::size_t n,
+    std::size_t k,
+    std::size_t blocks_per_row
 ) {
-    const std::size_t n = w_q8.rows;
-    const std::size_t k = w_q8.cols;
     if (m == 0 || n == 0 || k == 0) {
         return;
     }
-    if (x == nullptr || y == nullptr) {
-        throw std::invalid_argument("matmul_q8_0_nt: null tensor pointer.");
+    if (x == nullptr || q_weights == nullptr || q_scales == nullptr || y == nullptr) {
+        throw std::invalid_argument("matmul_q8_0_nt_raw: null tensor pointer.");
     }
 
-    const std::size_t q_stride = w_q8.blocks_per_row * kQ8BlockSize;
+    const std::size_t q_stride = blocks_per_row * kQ8BlockSize;
     const auto total_out = static_cast<std::ptrdiff_t>(m * n);
 
 #ifdef _OPENMP
@@ -170,12 +172,30 @@ void matmul_q8_0_nt(
         const std::size_t row_n = flat % n;
         y[flat] = dot_q8_fp32_row(
             x + row_m * k,
-            w_q8.weights.data() + row_n * q_stride,
-            w_q8.scales.data() + row_n * w_q8.blocks_per_row,
+            q_weights + row_n * q_stride,
+            q_scales + row_n * blocks_per_row,
             k,
-            w_q8.blocks_per_row
+            blocks_per_row
         );
     }
+}
+
+void matmul_q8_0_nt(
+    const float* x,
+    const Q8Matrix& w_q8,
+    float* y,
+    std::size_t m
+) {
+    matmul_q8_0_nt_raw(
+        x,
+        w_q8.weights.data(),
+        w_q8.scales.data(),
+        y,
+        m,
+        w_q8.rows,
+        w_q8.cols,
+        w_q8.blocks_per_row
+    );
 }
 
 }  // namespace tinyinfer

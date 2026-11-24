@@ -1,6 +1,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/vector.h>
 
 #include <algorithm>
 #include <stdexcept>
@@ -10,6 +11,7 @@
 #include "tinyinfer/matmul.hpp"
 #include "tinyinfer/ops.hpp"
 #include "tinyinfer/quant.hpp"
+#include "tinyinfer/transformer.hpp"
 #include "tinyinfer/types.hpp"
 
 namespace nb = nanobind;
@@ -35,7 +37,11 @@ nb::ndarray<nb::numpy, float, nb::ndim<1>> make_vec1d(std::size_t n) {
 }  // namespace
 
 NB_MODULE(_core, m) {
-    m.doc() = "tinyinfer C++20 quantized tensor kernels and GQA attention";
+    m.doc() = "tinyinfer C++20 quantized tensor kernels, GQA attention, and mmap transformer";
+
+    nb::enum_<tinyinfer::WeightDType>(m, "WeightDType")
+        .value("FP32", tinyinfer::WeightDType::FP32)
+        .value("Q8_0", tinyinfer::WeightDType::Q8_0);
 
     nb::class_<tinyinfer::BuildInfo>(m, "BuildInfo")
         .def_ro("avx2_fma", &tinyinfer::BuildInfo::avx2_fma)
@@ -67,10 +73,84 @@ NB_MODULE(_core, m) {
         .def("memory_bytes", &tinyinfer::KVCache::memory_bytes)
         .def("reset", &tinyinfer::KVCache::reset);
 
+    nb::class_<tinyinfer::ModelConfig>(m, "ModelConfig")
+        .def(nb::init<>())
+        .def_rw("vocab_size", &tinyinfer::ModelConfig::vocab_size)
+        .def_rw("dim", &tinyinfer::ModelConfig::dim)
+        .def_rw("hidden_dim", &tinyinfer::ModelConfig::hidden_dim)
+        .def_rw("n_layers", &tinyinfer::ModelConfig::n_layers)
+        .def_rw("n_q_heads", &tinyinfer::ModelConfig::n_q_heads)
+        .def_rw("n_kv_heads", &tinyinfer::ModelConfig::n_kv_heads)
+        .def_rw("max_seq_len", &tinyinfer::ModelConfig::max_seq_len)
+        .def_rw("tie_embeddings", &tinyinfer::ModelConfig::tie_embeddings)
+        .def_rw("dtype", &tinyinfer::ModelConfig::dtype)
+        .def_rw("rms_norm_eps", &tinyinfer::ModelConfig::rms_norm_eps)
+        .def_rw("rope_theta", &tinyinfer::ModelConfig::rope_theta);
+
+    nb::class_<tinyinfer::GenerationResult>(m, "GenerationResult")
+        .def_ro("generated_tokens", &tinyinfer::GenerationResult::generated_tokens)
+        .def_ro("prefill_ms", &tinyinfer::GenerationResult::prefill_ms)
+        .def_ro("decode_ms", &tinyinfer::GenerationResult::decode_ms)
+        .def_ro("decode_tok_per_sec", &tinyinfer::GenerationResult::decode_tok_per_sec)
+        .def_ro("peak_rss_mb", &tinyinfer::GenerationResult::peak_rss_mb);
+
+    nb::class_<tinyinfer::TransformerModel>(m, "TransformerModel")
+        .def(nb::init<const std::string&>(), nb::arg("tinf_path"))
+        .def("config", &tinyinfer::TransformerModel::config)
+        .def("mapped_bytes", &tinyinfer::TransformerModel::mapped_bytes)
+        .def("kv_cache_bytes", &tinyinfer::TransformerModel::kv_cache_bytes)
+        .def("reset_cache", &tinyinfer::TransformerModel::reset_cache)
+        .def(
+            "forward_token",
+            [](tinyinfer::TransformerModel& self, std::uint32_t token_id, std::size_t pos) {
+                const auto& logits = self.forward_token(token_id, pos);
+                auto out = make_vec1d(logits.size());
+                std::copy(logits.begin(), logits.end(), out.data());
+                return out;
+            },
+            nb::arg("token_id"),
+            nb::arg("pos")
+        )
+        .def(
+            "generate",
+            &tinyinfer::TransformerModel::generate,
+            nb::arg("prompt_tokens"),
+            nb::arg("max_new_tokens"),
+            nb::arg("temperature") = 0.0f,
+            nb::arg("top_p") = 0.9f,
+            nb::arg("seed") = 42
+        );
+
     m.def("get_build_info", &tinyinfer::get_build_info);
+    m.def("process_peak_rss_mb", &tinyinfer::process_peak_rss_mb);
+    m.def(
+        "write_synthetic_tinf",
+        &tinyinfer::write_synthetic_tinf,
+        nb::arg("path"),
+        nb::arg("config"),
+        nb::arg("seed") = 42
+    );
 
     m.def("quantize_q8_0", [](const ConstF32Mat& w) {
         return tinyinfer::quantize_q8_0(w.data(), w.shape(0), w.shape(1));
+    });
+
+    m.def("quantize_q8_0_arrays", [](const ConstF32Mat& w) {
+        auto qmat = tinyinfer::quantize_q8_0(w.data(), w.shape(0), w.shape(1));
+        auto* s_buf = new float[qmat.scales.size()];
+        std::copy(qmat.scales.begin(), qmat.scales.end(), s_buf);
+        nb::capsule s_owner(s_buf, [](void* p) noexcept { delete[] static_cast<float*>(p); });
+        auto s_arr = nb::ndarray<nb::numpy, float, nb::ndim<2>>(
+            s_buf, {qmat.rows, qmat.blocks_per_row}, s_owner
+        );
+
+        auto* w_buf = new int8_t[qmat.weights.size()];
+        std::copy(qmat.weights.begin(), qmat.weights.end(), w_buf);
+        nb::capsule w_owner(w_buf, [](void* p) noexcept { delete[] static_cast<int8_t*>(p); });
+        auto w_arr = nb::ndarray<nb::numpy, int8_t, nb::ndim<2>>(
+            w_buf, {qmat.rows, qmat.blocks_per_row * tinyinfer::kQ8BlockSize}, w_owner
+        );
+        return nb::make_tuple(s_arr, w_arr);
     });
 
     m.def("dequantize_q8_0", [](const tinyinfer::Q8Matrix& qmat) {
