@@ -1,5 +1,5 @@
 {
-  "timestamp_utc": "2026-11-24T21:30:55Z",
+  "timestamp_utc": "2026-11-24T21:32:41Z",
   "hardware": {
     "cpu": "AMD Ryzen 5 6600H with Radeon Graphics",
     "threads": 12,
@@ -8,7 +8,7 @@
     "openmp": true,
     "cuda_compiled": false,
     "cuda_device": "none (CPU-only build)",
-    "peak_rss_mb": 196.52
+    "peak_rss_mb": 196.82
   },
   "model_config": {
     "n_layers": 6,
@@ -24,27 +24,27 @@
     {
       "backend": "NumPy FP32 (CPU)",
       "weight_mb": 73.03,
-      "prefill_ms": 147.68,
-      "decode_ms": 321.36,
-      "decode_tok_s": 99.58,
+      "prefill_ms": 50.36,
+      "decode_ms": 155.72,
+      "decode_tok_s": 205.49,
       "cosine_sim": 1.0,
       "max_abs_drift": 0.0
     },
     {
       "backend": "tinyinfer FP32 (mmap)",
       "weight_mb": 73.03,
-      "prefill_ms": 25.61,
-      "decode_ms": 87.31,
-      "decode_tok_s": 366.49,
+      "prefill_ms": 38.77,
+      "decode_ms": 182.46,
+      "decode_tok_s": 175.38,
       "cosine_sim": 1.0,
       "max_abs_drift": 2.26e-06
     },
     {
       "backend": "tinyinfer Q8_0 (mmap)",
       "weight_mb": 23.43,
-      "prefill_ms": 24.2,
-      "decode_ms": 75.88,
-      "decode_tok_s": 421.73,
+      "prefill_ms": 32.53,
+      "decode_ms": 63.35,
+      "decode_tok_s": 505.17,
       "cosine_sim": 0.999791,
       "max_abs_drift": 0.066
     }

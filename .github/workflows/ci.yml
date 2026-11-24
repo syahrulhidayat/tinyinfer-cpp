@@ -13,15 +13,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Configure and test C++20 core (AVX2 + OpenMP)
+      - name: Configure, test, and smoke-run C++20 core (AVX2 + OpenMP)
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j
           ctest --test-dir build --output-on-failure
           ./build/tinyinfer_bench
-      - name: Build nanobind Python bindings and verify numerical parity
+          ./build/tinyinfer_cli --synthetic --dtype q8_0 --max-tokens 16
+      - name: Build nanobind Python bindings and verify full test suite
         run: |
           pip install -e ".[dev]"
-          ruff check python tests benchmarks
+          ruff check python tests benchmarks dashboard
           pytest -v
           python3 benchmarks/bench_kernels.py --iters 15
