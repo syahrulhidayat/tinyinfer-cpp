@@ -77,7 +77,7 @@ def _make_handler(results_path: Path) -> type[BaseHTTPRequestHandler]:
             body = results_path.read_bytes()
             self._send_bytes(HTTPStatus.OK, "application/json; charset=utf-8", body)
 
-        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+        def log_message(self, fmt: str, *args: object) -> None:
             return
 
     return DashboardHandler
