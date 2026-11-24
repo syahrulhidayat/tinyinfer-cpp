@@ -1,0 +1,37 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "nanobind>=2.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "tinyinfer"
+version = "0.1.0"
+description = "Lightweight C++20 quantized tensor kernel and inference engine"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.7",
+]
+
+[tool.scikit-build]
+cmake.version = ">=3.20"
+cmake.build-type = "Release"
+cmake.define.TINYINFER_BUILD_PYTHON = "ON"
+cmake.define.TINYINFER_BUILD_TESTS = "OFF"
+cmake.define.TINYINFER_BUILD_BENCH = "OFF"
+wheel.packages = ["python/tinyinfer"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tinyinfer"]

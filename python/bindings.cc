@@ -1,0 +1,122 @@
+#include <nanobind/nanobind.h>
+#include <nanobind/ndarray.h>
+#include <nanobind/stl/string.h>
+
+#include <stdexcept>
+
+#include "tinyinfer/matmul.hpp"
+#include "tinyinfer/ops.hpp"
+#include "tinyinfer/quant.hpp"
+#include "tinyinfer/types.hpp"
+
+namespace nb = nanobind;
+
+namespace {
+
+using ConstF32Mat = nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu>;
+using ConstF32Vec = nb::ndarray<const float, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
+using MutF32Vec = nb::ndarray<float, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
+
+nb::ndarray<nb::numpy, float, nb::ndim<2>> make_mat2d(std::size_t rows, std::size_t cols) {
+    auto* buf = new float[rows * cols];
+    nb::capsule owner(buf, [](void* p) noexcept { delete[] static_cast<float*>(p); });
+    return nb::ndarray<nb::numpy, float, nb::ndim<2>>(buf, {rows, cols}, owner);
+}
+
+nb::ndarray<nb::numpy, float, nb::ndim<1>> make_vec1d(std::size_t n) {
+    auto* buf = new float[n];
+    nb::capsule owner(buf, [](void* p) noexcept { delete[] static_cast<float*>(p); });
+    return nb::ndarray<nb::numpy, float, nb::ndim<1>>(buf, {n}, owner);
+}
+
+}  // namespace
+
+NB_MODULE(_core, m) {
+    m.doc() = "tinyinfer C++20 quantized tensor kernels";
+
+    nb::class_<tinyinfer::BuildInfo>(m, "BuildInfo")
+        .def_ro("avx2_fma", &tinyinfer::BuildInfo::avx2_fma)
+        .def_ro("openmp", &tinyinfer::BuildInfo::openmp)
+        .def_ro("max_threads", &tinyinfer::BuildInfo::max_threads)
+        .def_ro("compiler", &tinyinfer::BuildInfo::compiler);
+
+    nb::class_<tinyinfer::Q8Matrix>(m, "Q8Matrix")
+        .def_ro("rows", &tinyinfer::Q8Matrix::rows)
+        .def_ro("cols", &tinyinfer::Q8Matrix::cols)
+        .def_ro("blocks_per_row", &tinyinfer::Q8Matrix::blocks_per_row)
+        .def("memory_bytes", &tinyinfer::Q8Matrix::memory_bytes)
+        .def("compression_ratio", &tinyinfer::Q8Matrix::compression_ratio);
+
+    m.def("get_build_info", &tinyinfer::get_build_info);
+
+    m.def("quantize_q8_0", [](const ConstF32Mat& w) {
+        return tinyinfer::quantize_q8_0(w.data(), w.shape(0), w.shape(1));
+    });
+
+    m.def("dequantize_q8_0", [](const tinyinfer::Q8Matrix& qmat) {
+        auto vec = tinyinfer::dequantize_q8_0(qmat);
+        auto out = make_mat2d(qmat.rows, qmat.cols);
+        std::copy(vec.begin(), vec.end(), out.data());
+        return out;
+    });
+
+    m.def("matmul_fp32_nt", [](const ConstF32Mat& x, const ConstF32Mat& w) {
+        if (x.shape(1) != w.shape(1)) {
+            throw std::invalid_argument("matmul_fp32_nt: inner dimension K mismatch.");
+        }
+        auto out = make_mat2d(x.shape(0), w.shape(0));
+        tinyinfer::matmul_fp32_nt(x.data(), w.data(), out.data(), x.shape(0), w.shape(0), x.shape(1));
+        return out;
+    });
+
+    m.def("matmul_q8_0_nt", [](const ConstF32Mat& x, const tinyinfer::Q8Matrix& w_q8) {
+        if (x.shape(1) != w_q8.cols) {
+            throw std::invalid_argument("matmul_q8_0_nt: inner dimension K mismatch.");
+        }
+        auto out = make_mat2d(x.shape(0), w_q8.rows);
+        tinyinfer::matmul_q8_0_nt(x.data(), w_q8, out.data(), x.shape(0));
+        return out;
+    });
+
+    m.def(
+        "rmsnorm",
+        [](const ConstF32Vec& x, const ConstF32Vec& weight, float eps) {
+            if (x.shape(0) != weight.shape(0)) {
+                throw std::invalid_argument("rmsnorm: x and weight length mismatch.");
+            }
+            auto out = make_vec1d(x.shape(0));
+            tinyinfer::rmsnorm(out.data(), x.data(), weight.data(), x.shape(0), eps);
+            return out;
+        },
+        nb::arg("x"),
+        nb::arg("weight"),
+        nb::arg("eps") = 1e-5f
+    );
+
+    m.def("softmax", [](const ConstF32Vec& x) {
+        auto out = make_vec1d(x.shape(0));
+        tinyinfer::softmax(out.data(), x.data(), x.shape(0));
+        return out;
+    });
+
+    m.def("silu", [](const ConstF32Vec& x) {
+        auto out = make_vec1d(x.shape(0));
+        tinyinfer::silu(out.data(), x.data(), x.shape(0));
+        return out;
+    });
+
+    m.def(
+        "rope_inplace",
+        [](MutF32Vec x, std::size_t n_heads, std::size_t head_dim, std::size_t pos, float theta) {
+            if (x.shape(0) != n_heads * head_dim) {
+                throw std::invalid_argument("rope_inplace: vector length != n_heads * head_dim.");
+            }
+            tinyinfer::rope_inplace(x.data(), n_heads, head_dim, pos, theta);
+        },
+        nb::arg("x"),
+        nb::arg("n_heads"),
+        nb::arg("head_dim"),
+        nb::arg("pos"),
+        nb::arg("theta_base") = 10000.0f
+    );
+}
