@@ -1,0 +1,52 @@
+{
+  "timestamp_utc": "2026-11-24T21:30:55Z",
+  "hardware": {
+    "cpu": "AMD Ryzen 5 6600H with Radeon Graphics",
+    "threads": 12,
+    "os": "Linux 7.3.3-200.fc44.x86_64",
+    "avx2_fma": true,
+    "openmp": true,
+    "cuda_compiled": false,
+    "cuda_device": "none (CPU-only build)",
+    "peak_rss_mb": 196.52
+  },
+  "model_config": {
+    "n_layers": 6,
+    "dim": 512,
+    "hidden_dim": 1536,
+    "n_q_heads": 8,
+    "n_kv_heads": 2,
+    "vocab_size": 2048,
+    "prompt_len": 8,
+    "max_new_tokens": 32
+  },
+  "results": [
+    {
+      "backend": "NumPy FP32 (CPU)",
+      "weight_mb": 73.03,
+      "prefill_ms": 147.68,
+      "decode_ms": 321.36,
+      "decode_tok_s": 99.58,
+      "cosine_sim": 1.0,
+      "max_abs_drift": 0.0
+    },
+    {
+      "backend": "tinyinfer FP32 (mmap)",
+      "weight_mb": 73.03,
+      "prefill_ms": 25.61,
+      "decode_ms": 87.31,
+      "decode_tok_s": 366.49,
+      "cosine_sim": 1.0,
+      "max_abs_drift": 2.26e-06
+    },
+    {
+      "backend": "tinyinfer Q8_0 (mmap)",
+      "weight_mb": 23.43,
+      "prefill_ms": 24.2,
+      "decode_ms": 75.88,
+      "decode_tok_s": 421.73,
+      "cosine_sim": 0.999791,
+      "max_abs_drift": 0.066
+    }
+  ]
+}

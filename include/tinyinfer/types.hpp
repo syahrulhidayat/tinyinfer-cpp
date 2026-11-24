@@ -32,6 +32,7 @@ struct Q8Matrix {
 struct BuildInfo {
     bool avx2_fma = false;
     bool openmp = false;
+    bool cuda = false;
     int max_threads = 1;
     std::string compiler;
 };

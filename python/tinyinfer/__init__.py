@@ -12,6 +12,8 @@ from tinyinfer._core import (
     Q8Matrix,
     TransformerModel,
     WeightDType,
+    cuda_available,
+    cuda_device_name,
     dequantize_q8_0,
     get_build_info,
     process_peak_rss_mb,
@@ -27,6 +29,10 @@ __all__ = [
     "Q8Matrix",
     "TransformerModel",
     "WeightDType",
+    "cuda_available",
+    "cuda_device_name",
+    "cuda_matmul_fp32_nt",
+    "cuda_matmul_q8_0_nt",
     "dequantize_q8_0",
     "export_tinf",
     "get_build_info",
@@ -68,6 +74,14 @@ def matmul_fp32_nt(x: NDArray[np.floating], w: NDArray[np.floating]) -> NDArray[
 
 def matmul_q8_0_nt(x: NDArray[np.floating], w_q8: Q8Matrix) -> NDArray[np.float32]:
     return _core.matmul_q8_0_nt(_as_f32_2d(x), w_q8)
+
+
+def cuda_matmul_fp32_nt(x: NDArray[np.floating], w: NDArray[np.floating]) -> NDArray[np.float32]:
+    return _core.cuda_matmul_fp32_nt(_as_f32_2d(x), _as_f32_2d(w))
+
+
+def cuda_matmul_q8_0_nt(x: NDArray[np.floating], w_q8: Q8Matrix) -> NDArray[np.float32]:
+    return _core.cuda_matmul_q8_0_nt(_as_f32_2d(x), w_q8)
 
 
 def rmsnorm(

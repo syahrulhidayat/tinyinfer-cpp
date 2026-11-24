@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 #include "tinyinfer/attention.hpp"
+#include "tinyinfer/cuda_backend.hpp"
 #include "tinyinfer/kv_cache.hpp"
 #include "tinyinfer/matmul.hpp"
 #include "tinyinfer/ops.hpp"
@@ -37,7 +38,7 @@ nb::ndarray<nb::numpy, float, nb::ndim<1>> make_vec1d(std::size_t n) {
 }  // namespace
 
 NB_MODULE(_core, m) {
-    m.doc() = "tinyinfer C++20 quantized tensor kernels, GQA attention, and mmap transformer";
+    m.doc() = "tinyinfer C++20 quantized tensor kernels, GQA attention, mmap transformer, and CUDA";
 
     nb::enum_<tinyinfer::WeightDType>(m, "WeightDType")
         .value("FP32", tinyinfer::WeightDType::FP32)
@@ -46,6 +47,7 @@ NB_MODULE(_core, m) {
     nb::class_<tinyinfer::BuildInfo>(m, "BuildInfo")
         .def_ro("avx2_fma", &tinyinfer::BuildInfo::avx2_fma)
         .def_ro("openmp", &tinyinfer::BuildInfo::openmp)
+        .def_ro("cuda", &tinyinfer::BuildInfo::cuda)
         .def_ro("max_threads", &tinyinfer::BuildInfo::max_threads)
         .def_ro("compiler", &tinyinfer::BuildInfo::compiler);
 
@@ -122,6 +124,8 @@ NB_MODULE(_core, m) {
         );
 
     m.def("get_build_info", &tinyinfer::get_build_info);
+    m.def("cuda_available", &tinyinfer::cuda_available);
+    m.def("cuda_device_name", &tinyinfer::cuda_device_name);
     m.def("process_peak_rss_mb", &tinyinfer::process_peak_rss_mb);
     m.def(
         "write_synthetic_tinf",
@@ -175,6 +179,26 @@ NB_MODULE(_core, m) {
         }
         auto out = make_mat2d(x.shape(0), w_q8.rows);
         tinyinfer::matmul_q8_0_nt(x.data(), w_q8, out.data(), x.shape(0));
+        return out;
+    });
+
+    m.def("cuda_matmul_fp32_nt", [](const ConstF32Mat& x, const ConstF32Mat& w) {
+        if (x.shape(1) != w.shape(1)) {
+            throw std::invalid_argument("cuda_matmul_fp32_nt: inner dimension K mismatch.");
+        }
+        auto out = make_mat2d(x.shape(0), w.shape(0));
+        tinyinfer::cuda_matmul_fp32_nt(
+            x.data(), w.data(), out.data(), x.shape(0), w.shape(0), x.shape(1)
+        );
+        return out;
+    });
+
+    m.def("cuda_matmul_q8_0_nt", [](const ConstF32Mat& x, const tinyinfer::Q8Matrix& w_q8) {
+        if (x.shape(1) != w_q8.cols) {
+            throw std::invalid_argument("cuda_matmul_q8_0_nt: inner dimension K mismatch.");
+        }
+        auto out = make_mat2d(x.shape(0), w_q8.rows);
+        tinyinfer::cuda_matmul_q8_0_nt(x.data(), w_q8, out.data(), x.shape(0));
         return out;
     });
 

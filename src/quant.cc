@@ -24,6 +24,11 @@ BuildInfo get_build_info() noexcept {
     info.openmp = false;
     info.max_threads = 1;
 #endif
+#ifdef TINYINFER_HAS_CUDA
+    info.cuda = true;
+#else
+    info.cuda = false;
+#endif
 #if defined(__clang__)
     info.compiler = "Clang";
 #elif defined(__GNUC__)

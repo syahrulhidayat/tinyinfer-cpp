@@ -11,8 +11,9 @@ option(TINYINFER_BUILD_CLI "Build standalone C++ inference CLI" ON)
 option(TINYINFER_BUILD_PYTHON "Build nanobind Python extension" OFF)
 option(TINYINFER_ENABLE_OPENMP "Enable OpenMP multithreading" ON)
 option(TINYINFER_ENABLE_AVX2 "Enable AVX2+FMA SIMD instructions on x86_64" ON)
+option(TINYINFER_ENABLE_CUDA "Enable optional CUDA GPU kernels" OFF)
 
-add_library(tinyinfer_core STATIC
+set(TINYINFER_CORE_SOURCES
     src/quant.cc
     src/matmul.cc
     src/ops.cc
@@ -21,15 +22,35 @@ add_library(tinyinfer_core STATIC
     src/mmap_loader.cc
     src/transformer.cc
 )
+
+if(TINYINFER_ENABLE_CUDA)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    list(APPEND TINYINFER_CORE_SOURCES src/cuda_kernels.cu)
+else()
+    list(APPEND TINYINFER_CORE_SOURCES src/cuda_stub.cc)
+endif()
+
+add_library(tinyinfer_core STATIC ${TINYINFER_CORE_SOURCES})
 set_target_properties(tinyinfer_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(tinyinfer_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
 
+if(TINYINFER_ENABLE_CUDA)
+    target_compile_definitions(tinyinfer_core PUBLIC TINYINFER_HAS_CUDA=1)
+    set_target_properties(tinyinfer_core PROPERTIES CUDA_SEPARABLE_COMPILATION OFF)
+endif()
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(tinyinfer_core PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(tinyinfer_core PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+    )
     if(TINYINFER_ENABLE_AVX2 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-        target_compile_options(tinyinfer_core PRIVATE -mavx2 -mfma)
+        target_compile_options(tinyinfer_core PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-mavx2 -mfma>
+        )
     endif()
 endif()
 
