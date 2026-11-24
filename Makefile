@@ -1,4 +1,4 @@
-.PHONY: cpp-build cpp-test cpp-bench cpp-cli py-install py-test lint verify bench bench-attn bench-update clean
+.PHONY: cpp-build cpp-test cpp-bench cpp-cli py-install py-test lint verify bench bench-attn bench-e2e bench-update clean
 
 cpp-build:
 	cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -29,6 +29,9 @@ bench:
 
 bench-attn:
 	python3 benchmarks/bench_attention.py
+
+bench-e2e:
+	python3 benchmarks/bench_e2e_compare.py --out-json benchmarks/results/latest.json
 
 bench-update:
 	python3 benchmarks/bench_kernels.py --update-readme README.md
